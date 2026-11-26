@@ -14,11 +14,14 @@ let DB = blankDB(); // 先給空資料，實際內容由 Google Sheet 載入（�
    再防抖動後 POST 到 Apps Script 網頁應用程式，寫進 Google Sheet。 */
 const LS_DB="finbook_db_v1", LS_CFG="finbook_cfg_v1", LS_DIRTY="finbook_dirty";
 const LS_KEYS="finbook_key_session";
+// 後端網址由部署流程產生的 config.js 提供（只有網址；通行碼一律由使用者輸入）
+const DEFAULT_URL=(window.APP_CONFIG&&window.APP_CONFIG.API_URL)||"";
 // 通行碼可選擇只存在這次瀏覽（sessionStorage），不留在 localStorage
 function loadCfg(){
   let c={};
   try{c=JSON.parse(localStorage.getItem(LS_CFG))||{};}catch(e){}
   try{const k=sessionStorage.getItem(LS_KEYS);if(k)c={...c,key:k};}catch(e){}
+  if(!c.url&&DEFAULT_URL)c.url=DEFAULT_URL;
   return c;
 }
 let CFG=loadCfg();
@@ -995,6 +998,7 @@ function readCfgForm(){
   return{url,key};
 }
 $("cfg-url").value=CFG.url||"";$("cfg-key").value=CFG.key||"";
+if(DEFAULT_URL&&CFG.url===DEFAULT_URL)$("cfgUrlHint").hidden=false;
 (()=>{let ls={};try{ls=JSON.parse(localStorage.getItem(LS_CFG)||"{}");}catch(e){}$("cfg-remember").checked=!!ls.key||!CFG.key;})();
 $("cfgTest").onclick=async()=>{
   const c=readCfgForm();if(!c)return;
@@ -1026,7 +1030,7 @@ $("cfgSave").onclick=async()=>{
 };
 $("cfgClear").onclick=()=>{
   if(!confirm("中斷後資料只會存在這台裝置（雲端資料不會被刪除）。確定？"))return;
-  CFG={};localStorage.removeItem(LS_CFG);try{sessionStorage.removeItem(LS_KEYS);}catch(err){}$("cfg-url").value="";$("cfg-key").value="";
+  CFG={};localStorage.removeItem(LS_CFG);try{sessionStorage.removeItem(LS_KEYS);}catch(err){}$("cfg-url").value=DEFAULT_URL;$("cfg-key").value="";
   cfgMsg("已中斷雲端");setSync("","已存在本機（未連接雲端）");
 };
 /* 備份與還原 */

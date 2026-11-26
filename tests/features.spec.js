@@ -331,3 +331,13 @@ test.describe('雲端同步 v2（基準版本，通常只需 1 次請求）', ()
     expect(r.ss).toBe('secret-key');
   });
 });
+
+test('config.js 提供的預設網址會自動帶入，只需再輸入通行碼', async ({ page }) => {
+  await page.route('**/config.js', r => r.fulfill({ contentType: 'text/javascript', body: 'window.APP_CONFIG={API_URL:"https://script.google.com/macros/s/TEST/exec"};' }));
+  await seed(page, baseDB());
+  await page.goto('/');
+  await page.click('#tab-cloud');
+  await expect(page.locator('#cfg-url')).toHaveValue('https://script.google.com/macros/s/TEST/exec');
+  await expect(page.locator('#cfgUrlHint')).toBeVisible();
+  await expect(page.locator('#cfg-key')).toHaveValue('');
+});

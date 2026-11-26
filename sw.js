@@ -55,7 +55,7 @@ self.addEventListener('fetch', e => {
   }
 
   // 自家程式與樣式、manifest：網路優先
-  if (/\/(css|js)\//.test(url.pathname) || /manifest\.json$/.test(url.pathname)) {
+  if (/\/(css|js)\//.test(url.pathname) || /(manifest\.json|config\.js)$/.test(url.pathname)) {
     e.respondWith(networkFirst(req));
     return;
   }

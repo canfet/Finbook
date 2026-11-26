@@ -121,3 +121,13 @@ npm run test:all
 ```
 
 GitHub Actions（`.github/workflows/test.yml`）會在 push／PR 時自動執行以上測試。
+
+## 部署到 GitHub Pages（網址用 Repository variable，不寫進程式碼）
+
+1. 推送到 `main`。
+2. **Settings → Secrets and variables → Actions → Variables** 新增 Repository variable：`APPS_SCRIPT_URL` = Apps Script 的 `/exec` 網址。
+3. **Settings → Pages**，Source 選 **GitHub Actions**。
+4. 推送後 `.github/workflows/deploy.yml` 會：跑單元測試（失敗就不部署）→ 依 variable 產生 `config.js` → 移除測試與後端檔案 → 發佈。
+5. 打開網站，到「雲端」分頁，網址已自動帶入，只需輸入**通行碼**（通行碼不放在 variable 或程式碼裡）。
+
+本機測試：`cp config.example.js config.js` 後填入網址（`config.js` 已加入 `.gitignore`）。

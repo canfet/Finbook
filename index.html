@@ -252,7 +252,7 @@
       <form class="panel" id="cfgForm" novalidate>
         <h3>雲端同步設定</h3>
         <p class="sub">連到你自己的 Google Apps Script，資料存進你的 Google Sheet</p>
-        <div class="field"><label>Apps Script 網址（/exec 結尾）</label><input id="cfg-url" placeholder="https://script.google.com/macros/s/……/exec" autocomplete="off"></div>
+        <div class="field"><label>Apps Script 網址（/exec 結尾）</label><input id="cfg-url" placeholder="https://script.google.com/macros/s/……/exec" autocomplete="off"><p class="sub" id="cfgUrlHint" hidden style="margin:4px 0 0">網址已由網站預設帶入，只需要輸入通行碼。</p></div>
         <div class="field"><label>通行碼（Code.gs 裡的 API_KEY）</label><input id="cfg-key" type="password" autocomplete="off"></div>
         <div class="field"><label class="check"><input type="checkbox" id="cfg-remember" checked> 在這台裝置記住通行碼</label><p class="sub" style="margin:4px 0 0">取消勾選時，通行碼只保留到關閉瀏覽器，下次要重新輸入（較安全，適合共用電腦）。</p></div>
         <button class="btn" id="cfgSave" type="submit">儲存並同步</button>
@@ -335,6 +335,7 @@
   </form>
 </div>
 
+<script src="config.js"></script>
 <script src="js/logic.js?v=3"></script>
 <script src="js/app.js?v=3"></script>
 </body>
