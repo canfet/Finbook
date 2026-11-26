@@ -148,7 +148,52 @@
     return out;
   }
 
-  const api = { round2, parseMoney, uid, monthKeys, futureMonths, hitsMonth, addMonthsKeepDay, nextDueDate, sigDB, mergeDB, removeItem, restoreTombstones, sanitizeDB, ymdLocal, KINDS, MAX_AMOUNT };
+  /* ---------- 私人設定碼 / 一次性設定連結 ---------- */
+  const API_URL_RE = /^https:\/\/script\.google\.com\/(?:a\/macros\/[^/]+|macros)\/s\/[A-Za-z0-9_-]+\/exec$/;
+  function isValidApiUrl(u) {
+    return typeof u === "string" && API_URL_RE.test(u.trim());
+  }
+  function b64uEnc(str) {
+    if (typeof Buffer !== "undefined") return Buffer.from(str, "utf8").toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    const bytes = new TextEncoder().encode(str);
+    let bin = "";
+    for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function b64uDec(str) {
+    const s = str.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((str.length + 3) % 4);
+    if (typeof Buffer !== "undefined") return Buffer.from(s, "base64").toString("utf8");
+    const bin = atob(s);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  }
+  function encodeSetupToken(url, key) {
+    const u = String(url || "").trim();
+    if (!isValidApiUrl(u)) throw new Error("網址格式不正確");
+    const payload = { u };
+    if (key && String(key).trim()) payload.k = String(key).trim();
+    return "fb1." + b64uEnc(JSON.stringify(payload));
+  }
+  function decodeSetupToken(raw) {
+    if (typeof raw !== "string") return null;
+    let s = raw.trim();
+    if (!s) return null;
+    if (isValidApiUrl(s)) return { url: s, key: "" };
+    const m = s.match(/(?:^|[#&?])(?:cfg|setup)=([A-Za-z0-9._-]+)/);
+    if (m) s = m[1];
+    if (!s.startsWith("fb1.")) return null;
+    try {
+      const obj = JSON.parse(b64uDec(s.slice(4)));
+      if (!obj || !isValidApiUrl(obj.u)) return null;
+      const key = typeof obj.k === "string" ? obj.k.trim() : "";
+      return { url: obj.u.trim(), key };
+    } catch (e) {
+      return null;
+    }
+  }
+
+  const api = { round2, parseMoney, uid, monthKeys, futureMonths, hitsMonth, addMonthsKeepDay, nextDueDate, sigDB, mergeDB, removeItem, restoreTombstones, sanitizeDB, isValidApiUrl, encodeSetupToken, decodeSetupToken, ymdLocal, KINDS, MAX_AMOUNT };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Logic = api;
 })(typeof window !== "undefined" ? window : globalThis);

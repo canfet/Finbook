@@ -3,13 +3,14 @@
    - 頁面與自家的 CSS/JS：網路優先（線上永遠拿最新、不需要手動升版），失敗才用快取
    - vendor 函式庫與圖示：快取優先（內容不常變）
    - 只有「新增/移除檔案」時才需要把 CACHE 版本號 +1，讓新檔案進預先快取清單 */
-const CACHE = 'finbook-v3';
+const CACHE = 'finbook-v5';
 const SHELL = [
   './',
   './index.html',
-  './css/style.css?v=3',
-  './js/logic.js?v=3',
-  './js/app.js?v=3',
+  './css/style.css?v=5',
+  './js/logic.js?v=5',
+  './js/qrcode.js?v=5',
+  './js/app.js?v=5',
   './manifest.json',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -55,7 +56,7 @@ self.addEventListener('fetch', e => {
   }
 
   // 自家程式與樣式、manifest：網路優先
-  if (/\/(css|js)\//.test(url.pathname) || /(manifest\.json|config\.js)$/.test(url.pathname)) {
+  if (/\/(css|js)\//.test(url.pathname) || /manifest\.json$/.test(url.pathname)) {
     e.respondWith(networkFirst(req));
     return;
   }

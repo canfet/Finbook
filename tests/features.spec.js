@@ -316,13 +316,11 @@ test.describe('雲端同步 v2（基準版本，通常只需 1 次請求）', ()
     expect(st.calls.filter(c => c === 'save').length).toBe(2); // 第一次衝突、第二次成功
   });
 
-  test('不勾選「記住通行碼」：只存在 sessionStorage', async ({ page }) => {
+  test('不勾選「記住通行碼」：通行碼只存在 sessionStorage，不留在 localStorage', async ({ page }) => {
     await server(page, baseDB({ updatedAt: 1 }));
-    await page.addInitScript(() => { localStorage.removeItem('finbook_cfg_v1'); });
+    await page.addInitScript(([u]) => { localStorage.setItem('finbook_cfg_v1', JSON.stringify({ url: u })); }, [URL_]);
     await page.goto('/');
     await page.click('#tab-cloud');
-    await page.evaluate(() => { document.getElementById('cfgAdv').open = true; });
-    await page.fill('#cfg-url', URL_);
     await page.fill('#cfg-key', 'secret-key');
     await page.uncheck('#cfg-remember');
     await page.click('#cfgSave');
@@ -333,46 +331,98 @@ test.describe('雲端同步 v2（基準版本，通常只需 1 次請求）', ()
   });
 });
 
-test('config.js 提供的預設網址會自動帶入，只需再輸入通行碼', async ({ page }) => {
-  await page.route('**/config.js', r => r.fulfill({ contentType: 'text/javascript', body: 'window.APP_CONFIG={API_URL:"https://script.google.com/macros/s/TEST/exec"};' }));
-  await seed(page, baseDB());
-  await page.goto('/');
-  await page.click('#tab-cloud');
-  await expect(page.locator('#cfg-url')).toHaveValue('https://script.google.com/macros/s/TEST/exec');
-  await expect(page.locator('#cfgStatus')).toContainText('輸入通行碼就能開始同步');
-  await expect(page.locator('#cfg-url')).toBeHidden(); // 網址收在「進階」裡
-  await expect(page.locator('#cfg-key')).toHaveValue('');
-  await expect(page.locator('#cfgClear')).toBeHidden();
-});
+const LogicNode = require('../js/logic.js');
 
-test('有預設網址時：只輸入通行碼、按 Enter 就能連線，並通過 axe', async ({ page }) => {
-  const URL_ = 'https://script.google.com/macros/s/TEST/exec';
-  await page.route('**/config.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.APP_CONFIG={API_URL:"${URL_}"};` }));
+test('透過私人連結（#cfg=，僅含網址）匯入：立刻清掉網址列、不顯示網址，再輸通行碼即可同步', async ({ page }) => {
+  const URL_ = 'https://script.google.com/macros/s/PRIVATE_DEPLOY_ID/exec';
+  const tok = LogicNode.encodeSetupToken(URL_);
   const calls = [];
   await page.route('https://script.google.com/**', async (route) => {
     const b = JSON.parse(route.request().postData() || '{}');
-    calls.push([b.action, b.key]);
+    calls.push([route.request().url(), b.action, b.key]);
     const out = b.action === 'get' ? { ok: true, v: 2, data: null } : { ok: true, v: 2, sheet: 'x' };
     await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(out) });
   });
   await seed(page, baseDB());
-  await page.goto('/');
-  await page.click('#tab-cloud');
+  await page.goto('/#cfg=' + tok);
+  // 網址列已立刻清除，且畫面上不顯示 Apps Script 網址
+  expect(await page.evaluate(() => location.hash)).toBe('');
+  await expect(page.locator('#view-cloud')).toHaveClass(/active/);
+  await expect(page.locator('#view-cloud')).not.toContainText('PRIVATE_DEPLOY_ID');
+  await expect(page.locator('#view-cloud')).not.toContainText('script.google.com');
+  await expect(page.locator('#cfgTokenWrap')).toBeHidden();
+  await expect(page.locator('#cfg-key')).toBeFocused();
+  await expect(page.locator('#cfgMsg')).toContainText('已匯入雲端位址');
+
+  // 只需輸入通行碼、按 Enter 即可連線並通過 axe
   const r = await new AxeBuilder({ page }).withTags(AA).analyze();
   expect(fmtV(r)).toEqual([]);
   await page.fill('#cfg-key', 'my-key');
   await page.keyboard.press('Enter');
   await expect(page.locator('#cfgMsg')).toContainText('已連接雲端');
   await expect(page.locator('#cfgStatus')).toHaveClass(/on/);
-  await expect(page.locator('#cfgSave')).toHaveText('更新並同步');
-  await expect(page.locator('#cfgClear')).toBeVisible();
-  expect(calls.every(c => c[1] === 'my-key')).toBe(true);
+  await expect(page.locator('#qrBtn')).toBeVisible();
+  expect(calls.every(c => c[0] === URL_ && c[2] === 'my-key')).toBe(true);
 });
 
-test('沒填通行碼就送出：欄位顯示錯誤並聚焦', async ({ page }) => {
+test('透過私人連結（#cfg=，含網址＋通行碼）匯入：自動同步且清除網址列', async ({ page }) => {
+  const URL_ = 'https://script.google.com/macros/s/AUTO_SYNC_ID/exec';
+  const tok = LogicNode.encodeSetupToken(URL_, 'auto-key');
+  await page.route('https://script.google.com/**', async (route) => {
+    const b = JSON.parse(route.request().postData() || '{}');
+    const out = b.action === 'get' ? { ok: true, v: 2, data: null } : { ok: true, v: 2, sheet: 'x' };
+    await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(out) });
+  });
+  await seed(page, baseDB());
+  await page.goto('/#cfg=' + tok);
+  expect(await page.evaluate(() => location.hash)).toBe('');
+  await expect(page.locator('#cfgMsg')).toContainText('已連接雲端');
+  await expect(page.locator('#cfgStatus')).toHaveClass(/on/);
+});
+
+test('貼上遮蔽的設定碼連線後清空隱藏，並可開啟換機 QR Code 彈窗（含 axe 檢查）', async ({ page }) => {
+  const URL_ = 'https://script.google.com/macros/s/FIRST_TIME_ID/exec';
+  const tok = LogicNode.encodeSetupToken(URL_);
+  await page.route('https://script.google.com/**', async (route) => {
+    const b = JSON.parse(route.request().postData() || '{}');
+    const out = b.action === 'get' ? { ok: true, v: 2, data: null } : { ok: true, v: 2, sheet: 'x' };
+    await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(out) });
+  });
   await seed(page, baseDB());
   await page.goto('/');
   await page.click('#tab-cloud');
+  await expect(page.locator('#cfg-token')).toHaveAttribute('type', 'password');
+  await page.fill('#cfg-token', tok);
+  await page.fill('#cfg-key', 'k123');
+  await page.click('#cfgSave');
+  await expect(page.locator('#cfgMsg')).toContainText('已連接雲端');
+  await expect(page.locator('#cfgTokenWrap')).toBeHidden();
+  await expect(page.locator('#cfg-token')).toHaveValue('');
+  await expect(page.locator('#view-cloud')).not.toContainText('FIRST_TIME_ID');
+
+  // 開啟換機 QR Code 彈窗
+  await page.click('#qrBtn');
+  await expect(page.locator('#qrModal')).toBeVisible();
+  await expect(page.locator('#qrBox svg path')).toHaveCount(1);
+  const svgBefore = await page.locator('#qrBox').innerHTML();
+  await page.check('#qrIncludeKey');
+  const svgAfter = await page.locator('#qrBox').innerHTML();
+  expect(svgAfter).not.toBe(svgBefore);
+  const r = await new AxeBuilder({ page }).withTags(AA).analyze();
+  expect(fmtV(r)).toEqual([]);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#qrModal')).toBeHidden();
+  await expect(page.locator('#qrBtn')).toBeFocused();
+});
+
+test('未填設定碼與未填通行碼時：欄位顯示錯誤並聚焦', async ({ page }) => {
+  await seed(page, baseDB());
+  await page.goto('/');
+  await page.click('#tab-cloud');
+  await page.click('#cfgSave');
+  await expect(page.locator('#cfg-token')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#cfg-token')).toBeFocused();
+  await page.fill('#cfg-token', 'https://script.google.com/macros/s/TEST_ONLY/exec');
   await page.click('#cfgSave');
   await expect(page.locator('#cfg-key')).toHaveAttribute('aria-invalid', 'true');
   await expect(page.locator('#cfg-key')).toBeFocused();

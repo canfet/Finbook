@@ -40,8 +40,17 @@ function resetKey() {
   setup();
 }
 
+/** 產生私人設定碼（選用）：把你的 /exec 網址傳進來即可在執行記錄拿到 fb1. 開頭的設定碼 */
+function printSetupCode_(webAppUrl, includeKey) {
+  const payload = { u: String(webAppUrl || '').trim() };
+  if (includeKey) payload.k = PropertiesService.getScriptProperties().getProperty('API_KEY') || '';
+  const b64 = Utilities.base64EncodeWebSafe(JSON.stringify(payload)).replace(/=+$/, '');
+  Logger.log('私人設定碼（請勿公開分享）：fb1.' + b64);
+}
+
 function doGet() {
-  return json_({ ok: true, app: 'finbook', msg: '理財記帳本 API 運作中，資料請用 POST 存取' });
+  // 不洩露應用程式名稱或用途
+  return json_({ ok: false });
 }
 
 function doPost(e) {

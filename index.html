@@ -2,10 +2,9 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://*.googleusercontent.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' https://script.google.com https://script.googleusercontent.com https://*.googleusercontent.com; manifest-src 'self'; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>理財記帳本</title>
-<!-- PWA：讓 iOS / Android 可「加到主畫面」當 App 使用 -->
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#f6f4ee" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#121c18" media="(prefers-color-scheme: dark)">
@@ -16,9 +15,8 @@
 <meta name="apple-mobile-web-app-title" content="記帳本">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="icon" type="image/png" sizes="192x192" href="icons/icon-192.png">
-<!-- 函式庫自家託管（vendor/）。xlsx 體積大，按「匯出 Excel」時才載入 -->
 <script src="vendor/chart.umd.min.js"></script>
-<link rel="stylesheet" href="css/style.css?v=3">
+<link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body>
 <a class="skip-link" href="#main">跳到主要內容</a>
@@ -252,30 +250,32 @@
       <form class="panel" id="cfgForm" novalidate>
         <h3>雲端同步</h3>
         <div id="cfgStatus" class="cfg-status" role="status" aria-live="polite"></div>
+        <div class="field" id="cfgTokenWrap">
+          <label for="cfg-token">私人設定碼或連結</label>
+          <input id="cfg-token" type="password" autocomplete="off" placeholder="貼上設定碼、私人連結或部署網址" aria-describedby="cfgTokenHelp">
+          <p class="sub" id="cfgTokenHelp" style="margin:4px 0 0">內容會以星號遮蔽、不會明文顯示；也可直接掃描另一台裝置的「換機 QR Code」匯入。</p>
+        </div>
         <div class="field">
-          <label for="cfg-key">通行碼</label>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px"><label for="cfg-key" style="margin:0">通行碼</label><button type="button" id="cfgChangeToken" class="link-btn" hidden>更換設定碼</button></div>
           <input id="cfg-key" type="password" autocomplete="off" aria-describedby="cfgKeyHelp">
           <p class="sub" id="cfgKeyHelp" style="margin:4px 0 0">在 Apps Script 執行 <b>setup</b> 後，「執行記錄」會顯示你的通行碼（API_KEY）。</p>
         </div>
         <div class="field"><label class="check"><input type="checkbox" id="cfg-remember" checked> 在這台裝置記住通行碼</label><p class="sub" style="margin:0">取消勾選時，通行碼只保留到關閉瀏覽器，下次要重新輸入（適合共用電腦）。</p></div>
-        <details class="dt" id="cfgAdv" style="margin:0 0 14px">
-          <summary>進階：Apps Script 網址</summary>
-          <div class="field" style="margin-top:8px"><label for="cfg-url">網址（/exec 結尾）</label><input id="cfg-url" placeholder="https://script.google.com/macros/s/……/exec" autocomplete="off"><p class="sub" id="cfgUrlHint" style="margin:4px 0 0"></p></div>
-        </details>
         <button class="btn" id="cfgSave" type="submit">連接並同步</button>
         <button type="button" class="btn ghost" id="cfgTest" style="margin-top:8px">測試連線</button>
-        <button type="button" class="btn ghost" id="cfgClear" style="margin-top:8px" hidden>中斷雲端（只用本機）</button>
+        <button type="button" class="btn ghost" id="qrBtn" style="margin-top:8px" hidden aria-haspopup="dialog">產生換機 QR Code／私人連結</button>
+        <button type="button" class="btn ghost" id="cfgClear" style="margin-top:8px" hidden>中斷雲端（清除這台裝置設定）</button>
         <p class="sub" id="cfgMsg" role="status" aria-live="polite" style="margin:12px 0 0"></p>
       </form>
       <div class="panel">
         <h3>資料存在哪裡</h3>
         <p class="sub">本機優先，再同步到雲端</p>
         <div class="note">
-          每記一筆都會先存在這台手機（離線也能用），連上網路後自動上傳到你的 Google Sheet。換手機或用電腦時，填入同一組網址與通行碼，就會載入同一份資料。
+          每記一筆都會先存在這台手機（離線也能用），連上網路後自動上傳到你的 Google Sheet。這個公開網站本身不含你的後端網址；換裝置時請用「產生換機 QR Code／私人連結」匯入。
         </div>
         <ol class="steps">
-          <li><b>iPhone</b>：用 Safari 開這個網址 → 分享 → 「加入主畫面」。</li>
-          <li><b>Android</b>：用 Chrome 開 → 右上「⋮」→「安裝應用程式」或「加到主畫面」。</li>
+          <li><b>iPhone</b>：先用 Safari 開這個網址 → 分享 → 「加入主畫面」；開啟主畫面 App 後再貼上「設定碼」與通行碼。</li>
+          <li><b>Android</b>：用 Chrome 掃描「換機 QR Code」匯入後，點右上「⋮」→「安裝應用程式」或「加到主畫面」。</li>
           <li>Google Sheet 裡會看到 <b>data、交易明細、未來規劃、資產、投資、預算、分類設定</b> 分頁。</li>
         </ol>
       </div>
@@ -342,8 +342,23 @@
   </form>
 </div>
 
-<script src="config.js"></script>
-<script src="js/logic.js?v=3"></script>
-<script src="js/app.js?v=3"></script>
+<!-- 換機 QR Code／私人連結彈窗 -->
+<div id="qrModal" class="modal-bg">
+  <div class="modal-box" role="dialog" aria-modal="true" aria-labelledby="qrTitle">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <h3 id="qrTitle" style="font-size:17px">匯入到其他裝置</h3>
+      <button id="qrClose" type="button" class="icon-btn" aria-label="關閉視窗"><span aria-hidden="true">×</span></button>
+    </div>
+    <p class="sub" style="font-size:12.5px;color:var(--muted);margin-bottom:14px">用手機掃描即可匯入雲端設定，開啟後網址列會自動清除；此 QR Code 與連結請勿公開分享。</p>
+    <div id="qrBox" class="qr-box"></div>
+    <div class="field" style="margin:12px 0"><label class="check"><input type="checkbox" id="qrIncludeKey"> 一併帶入通行碼（掃完直接同步）</label><p class="sub" style="margin:0">未勾選時只帶入雲端位址，手機掃完仍需手動輸入通行碼（較安全）。</p></div>
+    <button type="button" class="btn" id="qrCopyLink">複製私人設定連結</button>
+    <button type="button" class="btn ghost" id="qrCopyToken" style="margin-top:8px">複製設定碼（iPhone 主畫面 App 用）</button>
+  </div>
+</div>
+
+<script src="js/logic.js?v=5"></script>
+<script src="js/qrcode.js?v=5"></script>
+<script src="js/app.js?v=5"></script>
 </body>
 </html>

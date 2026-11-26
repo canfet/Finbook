@@ -59,18 +59,24 @@ git remote add origin https://github.com/你的帳號/finbook.git
 git push -u origin main
 ```
 
-## 步驟三：連接雲端
+## 步驟三：連接雲端（私人設定，網站不含後端網址）
 
-1. 用瀏覽器打開 `https://你的帳號.github.io/finbook/`
-2. 切到 **☁️ 雲端** 分頁 → 貼上步驟一的 **網址** 和 **通行碼** → **儲存並同步**。
-3. 右上角圓點變綠、顯示「已同步至雲端」就完成了。回 Google Sheet 會看到各分頁出現資料。
+這個公開網站本身**不包含任何 Apps Script 網址或密碼**，別人打開網站只會是空白的本機記帳本。
+
+1. **第一台裝置（例如電腦）**：
+   - 打開 `https://你的帳號.github.io/finbook/`，切到 **☁️ 雲端** 分頁。
+   - 在 **私人設定碼或連結**（以星號遮蔽、不會明文顯示）貼上步驟一的 `/exec` 網址，輸入 **通行碼** → 按 **連接並同步**。
+   - 連線成功後，輸入欄會自動清空並隱藏，畫面上只留通行碼。
+2. **匯入到手機（私人 QR Code／一次性設定連結）**：
+   - 在已連線的電腦「雲端」分頁按 **產生換機 QR Code／私人連結**。
+   - 預設**只帶入雲端位址**（不含通行碼，較安全）；若想掃完直接連線可勾選「一併帶入通行碼」。
+   - 用手機掃描 QR Code 或點開私人連結，開啟後會自動匯入設定並**立刻清除網址列**。
 
 ## 步驟四：裝到手機
 
-- **iPhone / iPad**：一定要用 **Safari** 開網址 → 下方「分享」⬆ → **加入主畫面**。
-- **Android**：用 **Chrome** 開 → 右上「⋮」→ **安裝應用程式**（或「加到主畫面」）。
+- **iPhone / iPad**：先用 **Safari** 開網站 → 下方「分享」⬆ → **加入主畫面**。從主畫面打開 App 後（iOS 主畫面 App 與 Safari 儲存空間分開），按電腦端彈窗裡的 **「複製設定碼」** 貼到「私人設定碼或連結」欄再輸入通行碼。
+- **Android**：用 **Chrome** 掃描「換機 QR Code」匯入後 → 右上「⋮」→ **安裝應用程式**（或「加到主畫面」）。
 
-從主畫面打開後，到「雲端」分頁再填一次網址與通行碼（iOS 的主畫面 App 和 Safari 儲存空間是分開的）。
 之後每台裝置都會同步同一份 Google Sheet。
 
 ---
@@ -122,12 +128,9 @@ npm run test:all
 
 GitHub Actions（`.github/workflows/test.yml`）會在 push／PR 時自動執行以上測試。
 
-## 部署到 GitHub Pages（網址用 Repository variable，不寫進程式碼）
+## 部署到 GitHub Pages（不需要設定任何 Variable 或 Secret）
 
 1. 推送到 `main`。
-2. **Settings → Secrets and variables → Actions → Variables** 新增 Repository variable：`APPS_SCRIPT_URL` = Apps Script 的 `/exec` 網址。
-3. **Settings → Pages**，Source 選 **GitHub Actions**。
-4. 推送後 `.github/workflows/deploy.yml` 會：跑單元測試（失敗就不部署）→ 依 variable 產生 `config.js` → 移除測試與後端檔案 → 發佈。
-5. 打開網站，到「雲端」分頁，網址已自動帶入，只需輸入**通行碼**（通行碼不放在 variable 或程式碼裡）。
-
-本機測試：`cp config.example.js config.js` 後填入網址（`config.js` 已加入 `.gitignore`）。
+2. **Settings → Pages**，Source 選 **GitHub Actions**。
+3. 推送後 `.github/workflows/deploy.yml` 會：跑單元測試（失敗就不部署）→ 移除測試與後端檔案 → 發佈。
+4. 公開網站裡完全不含你的 Apps Script 網址與通行碼；在自己裝置上透過「私人 QR Code / 設定連結 / 設定碼」匯入即可。

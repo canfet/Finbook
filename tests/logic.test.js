@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const L = require('../js/logic.js');
+const QR = require('../js/qrcode.js');
 
 const D = (y, m, d) => new Date(y, m - 1, d);
 const ymd = d => d && L.ymdLocal(d);
@@ -195,5 +196,72 @@ test.describe('sanitizeDB（匯入／雲端資料清理）', () => {
     const d = L.sanitizeDB({ tx: [{ amount: 1, date: '2026-01-01', note: 'x'.repeat(2000) }] }, '2026-01-01');
     assert.equal(d.tx[0].note.length, 500);
     assert.ok(d.tx[0].id);
+  });
+});
+
+test.describe('私人設定碼編解碼（encodeSetupToken / decodeSetupToken）', () => {
+  const URL1 = 'https://script.google.com/macros/s/AKfycbx123456_abc-DEF/exec';
+  const URL2 = 'https://script.google.com/a/macros/example.com/s/AKfycbx999/exec';
+
+  test('僅網址編碼與解碼（不含通行碼）', () => {
+    const tok = L.encodeSetupToken(URL1);
+    assert.ok(tok.startsWith('fb1.'));
+    assert.ok(!tok.includes('script.google.com'));
+    assert.deepEqual(L.decodeSetupToken(tok), { url: URL1, key: '' });
+    assert.deepEqual(L.decodeSetupToken(`https://example.github.io/fin/#cfg=${tok}`), { url: URL1, key: '' });
+  });
+
+  test('網址＋通行碼編碼與解碼（支援 Workspace 網址與 #setup=）', () => {
+    const tok = L.encodeSetupToken(URL2, 'my-secret-key-24');
+    assert.deepEqual(L.decodeSetupToken(`#setup=${tok}`), { url: URL2, key: 'my-secret-key-24' });
+  });
+
+  test('直接貼上原始 /exec 網址也能解析，惡意或非 Apps Script 網址一律拒絕', () => {
+    assert.deepEqual(L.decodeSetupToken(URL1), { url: URL1, key: '' });
+    assert.equal(L.decodeSetupToken('https://evil.example.com/macros/s/abc/exec'), null);
+    assert.equal(L.decodeSetupToken('https://script.google.com/macros/s/abc/dev'), null);
+    assert.equal(L.decodeSetupToken('fb1.not-valid-base64!!!'), null);
+    assert.throws(() => L.encodeSetupToken('https://evil.example.com/exec'));
+  });
+});
+
+test.describe('離線 QR Code 產生器（ISO/IEC 18004）', () => {
+  test('短字串與完整 260 字私人設定連結都能正確編碼並輸出 SVG', () => {
+    const longUrl = 'https://example.github.io/Finance/#cfg=' + L.encodeSetupToken(
+      'https://script.google.com/macros/s/' + 'A'.repeat(68) + '/exec',
+      'k'.repeat(24)
+    );
+    for (const txt of ['HELLO', 'https://example.com', longUrl]) {
+      const qr = QR.encode(txt);
+      assert.equal(qr.size, qr.version * 4 + 17);
+      // 驗證三個定位圖樣中心與固定黑點
+      assert.equal(qr.modules[3][3], 1);
+      assert.equal(qr.modules[3][qr.size - 4], 1);
+      assert.equal(qr.modules[qr.size - 4][3], 1);
+      assert.equal(qr.modules[qr.size - 8][8], 1);
+      // 驗證時序圖樣交替黑白
+      for (let i = 8; i < qr.size - 8; i++) {
+        assert.equal(qr.modules[6][i], i % 2 === 0 ? 1 : 0);
+        assert.equal(qr.modules[i][6], i % 2 === 0 ? 1 : 0);
+      }
+      const svg = QR.toSvg(txt);
+      assert.ok(svg.startsWith('<svg ') && svg.includes('<path d="') && svg.endsWith('</svg>'));
+    }
+  });
+
+  test('Reed-Solomon 除錯碼驗證（多項式在所有生成根上的餘數為 0）', () => {
+    const { gfMul, rsGenerator, rsRemainder } = QR._internal;
+    const data = [32, 91, 11, 120, 209, 114, 220, 77, 67, 64, 236, 17, 236, 17, 236, 17];
+    const gen = rsGenerator(10);
+    const ecc = rsRemainder(data, gen);
+    const full = data.concat(ecc);
+    // 用 Horner 法在 α^0..α^9 求值，必全為 0
+    let root = 1;
+    for (let i = 0; i < 10; i++) {
+      let val = 0;
+      for (const b of full) val = gfMul(val, root) ^ b;
+      assert.equal(val, 0);
+      root = gfMul(root, 2);
+    }
   });
 });

@@ -1,5 +1,5 @@
 /* ---------------- 狀態 ---------------- */
-const {round2,parseMoney,uid,monthKeys,futureMonths,hitsMonth,nextDueDate,sigDB,mergeDB,removeItem,restoreTombstones,sanitizeDB}=window.Logic;
+const {round2,parseMoney,uid,monthKeys,futureMonths,hitsMonth,nextDueDate,sigDB,mergeDB,removeItem,restoreTombstones,sanitizeDB,isValidApiUrl,encodeSetupToken,decodeSetupToken}=window.Logic;
 const dateOk=s=>/^\d{4}-\d{2}-\d{2}$/.test(s);
 const DEFAULT_CATS = {
   income:["薪資","獎金","投資收益","副業","其他收入"],
@@ -14,18 +14,28 @@ let DB = blankDB(); // 先給空資料，實際內容由 Google Sheet 載入（�
    再防抖動後 POST 到 Apps Script 網頁應用程式，寫進 Google Sheet。 */
 const LS_DB="finbook_db_v1", LS_CFG="finbook_cfg_v1", LS_DIRTY="finbook_dirty";
 const LS_KEYS="finbook_key_session";
-// 後端網址由部署流程產生的 config.js 提供（只有網址；通行碼一律由使用者輸入）
-const DEFAULT_URL=(window.APP_CONFIG&&window.APP_CONFIG.API_URL)||"";
-// 通行碼可選擇只存在這次瀏覽（sessionStorage），不留在 localStorage
+// 通行碼可選擇只存在這次瀏覽（sessionStorage），不留在 localStorage；後端網址只透過私人設定碼／QR 匯入本機
 function loadCfg(){
   let c={};
   try{c=JSON.parse(localStorage.getItem(LS_CFG))||{};}catch(e){}
   try{const k=sessionStorage.getItem(LS_KEYS);if(k)c={...c,key:k};}catch(e){}
-  if(!c.url&&DEFAULT_URL)c.url=DEFAULT_URL;
+  if(c.url&&!isValidApiUrl(c.url))delete c.url;
   return c;
 }
+function saveCfgStore(cfg,remember){
+  try{
+    if(remember){
+      localStorage.setItem(LS_CFG,JSON.stringify({url:cfg.url,...(cfg.key?{key:cfg.key}:{})}));
+      sessionStorage.removeItem(LS_KEYS);
+    }else{
+      localStorage.setItem(LS_CFG,JSON.stringify({url:cfg.url}));
+      if(cfg.key)sessionStorage.setItem(LS_KEYS,cfg.key);
+      else sessionStorage.removeItem(LS_KEYS);
+    }
+  }catch(err){}
+}
 let CFG=loadCfg();
-const cloudOn=()=>!!(CFG.url&&CFG.key);
+const cloudOn=()=>!!(isValidApiUrl(CFG.url)&&CFG.key);
 function saveLocal(){try{localStorage.setItem(LS_DB,JSON.stringify(DB));}catch(e){}}
 function applyDB(d){
   DB={...blankDB(),...sanitizeDB(d,todayStr())};
@@ -47,11 +57,23 @@ function save(){
 let SERVER_V2=false;   // 後端是否支援「基準版本」寫入（新版 Code.gs）
 let REMOTE_AT;         // 雲端目前已知的 updatedAt；undefined=尚未取得
 async function api(body,cfg=CFG){
-  const r=await fetch(cfg.url,{method:"POST",redirect:"follow",
-    headers:{"Content-Type":"text/plain;charset=utf-8"},
-    body:JSON.stringify({...body,key:cfg.key})});
+  let r;
+  try{
+    r=await fetch(cfg.url,{method:"POST",redirect:"follow",credentials:"omit",
+      headers:{"Content-Type":"text/plain;charset=utf-8"},
+      body:JSON.stringify({...body,key:cfg.key})});
+  }catch(e){
+    if(!navigator.onLine)throw new Error("目前離線，請確認網路連線後再試");
+    throw new Error("無法連線到 Apps Script（請確認部署權限「誰可以存取」已設為「所有人」，且網址為最新的 /exec 部署）");
+  }
+  const txt=await r.text();
   let j;
-  try{j=await r.json();}catch(e){throw new Error("回應格式錯誤，請確認網址是 /exec 結尾，且存取權設為「所有人」");}
+  try{j=JSON.parse(txt);}catch(e){
+    const hint=r.status===404?"找不到部署網址（404），請確認已部署最新版且網址結尾為 /exec"
+      :(r.status===401||r.status===403)?"存取被拒（"+r.status+"），請確認 Apps Script「誰可以存取」設為「所有人」"
+      :"回應格式錯誤（HTTP "+r.status+"），請確認 Apps Script「執行身分」為「我」、「誰可以存取」為「所有人」，且網址結尾為 /exec";
+    throw new Error(hint);
+  }
   if(j.v>=2)SERVER_V2=true;
   if(!j.ok&&!j.conflict)throw new Error(j.error||"未知錯誤");
   return j;
@@ -993,63 +1015,140 @@ $("xlsxBtn").onclick=async()=>{
 };
 
 /* ---------------- 雲端設定頁 ---------------- */
+let showTokenInput=false;
 function cfgMsg(t,ok){const m=$("cfgMsg");m.textContent=t;m.style.color=ok===false?"var(--danger)":ok?"var(--jade)":"var(--muted)";}
 function readCfgForm(){
-  const url=$("cfg-url").value.trim()||DEFAULT_URL;const key=$("cfg-key").value.trim();
+  const rawTok=$("cfg-token").value.trim();
+  let parsed=null;
+  if(rawTok){
+    parsed=decodeSetupToken(rawTok);
+    if(!parsed){showErr($("cfg-token"),"設定碼或網址格式不正確（請貼上私人設定連結、fb1. 開頭的設定碼，或 /exec 結尾的 Apps Script 網址）");return null;}
+  }
+  const url=(parsed&&parsed.url)||(isValidApiUrl(CFG.url)?CFG.url:"");
+  const key=$("cfg-key").value.trim()||(parsed&&parsed.key)||"";
+  if(!isValidApiUrl(url)){
+    showTokenInput=true;renderCfg();
+    showErr($("cfg-token"),"請先貼上私人設定碼／連結，或用手機掃描「換機 QR Code」匯入");
+    return null;
+  }
   if(!key){showErr($("cfg-key"),"請輸入通行碼");return null;}
-  if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)){$("cfgAdv").open=true;showErr($("cfg-url"),"網址格式不對：要是 https://script.google.com/…/exec 結尾",$("cfgUrlHint"));return null;}
-  return{url,key};
+  return{url,key,fromToken:!!parsed};
 }
-$("cfg-url").value=CFG.url||"";$("cfg-key").value=CFG.key||"";
-// 狀態列、按鈕文字與「進階」網址區塊的顯示
+$("cfg-key").value=CFG.key||"";
+// 狀態列、按鈕與設定碼欄位顯示（後端網址永不以明文顯示在畫面上）
 function renderCfg(){
-  const on=cloudOn(),st=$("cfgStatus");
+  const on=cloudOn(),st=$("cfgStatus"),hasUrl=isValidApiUrl(CFG.url);
   if(!st)return;
   st.className="cfg-status"+(on?(SYNC.state==="err"?" err":" on"):"");
   st.innerHTML=on
     ?`<span aria-hidden="true">${SYNC.state==="err"?"⚠":"●"}</span><span>${esc(SYNC.txt||"已連接雲端")}<small>資料會自動同步到你的 Google Sheet</small></span>`
-    :`<span aria-hidden="true">○</span><span>尚未連接雲端<small>${DEFAULT_URL?"輸入通行碼就能開始同步":"需要先填入 Apps Script 網址與通行碼"}</small></span>`;
+    :hasUrl
+      ?`<span aria-hidden="true">○</span><span>已匯入雲端位址，尚未連接<small>輸入通行碼就能開始同步</small></span>`
+      :`<span aria-hidden="true">○</span><span>尚未設定雲端<small>請掃描換機 QR Code，或貼上私人設定碼與通行碼</small></span>`;
+  $("cfgTokenWrap").hidden=hasUrl&&!showTokenInput;
+  $("cfgChangeToken").hidden=!hasUrl||showTokenInput;
   $("cfgSave").textContent=on?"更新並同步":"連接並同步";
-  $("cfgClear").hidden=!on;
-  const custom=!!CFG.url&&CFG.url!==DEFAULT_URL;
-  $("cfgUrlHint").textContent=DEFAULT_URL&&!custom?"目前使用網站預設網址，通常不需要修改。":"";
-  if(!DEFAULT_URL||custom)$("cfgAdv").open=true;
+  $("qrBtn").hidden=!hasUrl;
+  $("cfgClear").hidden=!(on||hasUrl);
 }
+$("cfgChangeToken").onclick=()=>{showTokenInput=true;renderCfg();$("cfg-token").focus();};
 (()=>{let ls={};try{ls=JSON.parse(localStorage.getItem(LS_CFG)||"{}");}catch(e){}$("cfg-remember").checked=!!ls.key||!CFG.key;})();
-$("cfgTest").onclick=async()=>{
-  const c=readCfgForm();if(!c)return;
-  cfgMsg("測試中…");
-  try{const j=await api({action:"ping"},c);cfgMsg("連線成功 ✓ 試算表："+(j.sheet||""),true);}
-  catch(e){cfgMsg("連線失敗："+e.message,false);}
-};
-$("cfgSave").onclick=async()=>{
-  const c=readCfgForm();if(!c)return;
+async function connectAndSync(c){
   cfgMsg("連線中…");
   let remote;
   try{remote=(await api({action:"get"},c)).data;}
-  catch(e){cfgMsg("連線失敗："+e.message,false);return;}
-  CFG=c;
-  try{
-    if($("cfg-remember").checked){localStorage.setItem(LS_CFG,JSON.stringify(CFG));sessionStorage.removeItem(LS_KEYS);}
-    else{localStorage.setItem(LS_CFG,JSON.stringify({url:CFG.url}));sessionStorage.setItem(LS_KEYS,CFG.key);}
-  }catch(err){}
+  catch(e){cfgMsg("連線失敗："+e.message,false);return false;}
+  CFG={url:c.url,key:c.key};
+  showTokenInput=false;
+  $("cfg-token").value="";
+  $("cfg-key").value=c.key;
+  saveCfgStore(CFG,$("cfg-remember").checked);
   REMOTE_AT=(remote&&remote.updatedAt)||0;
   if(remote&&remote.tx!==undefined){
     const nLocal=DB.tx.length,nRemote=(remote.tx||[]).length;
     adoptMerged(mergeDB(DB,sanitizeDB(remote,todayStr())));
     await doSave();
-    cfgMsg(`已連接雲端 ✓ 已合併雲端 ${nRemote} 筆與本機 ${nLocal} 筆記錄（共 ${DB.tx.length} 筆），沒有資料被覆蓋`,true);
+    if(SYNC.state==="err")cfgMsg("已讀取雲端資料，但寫回雲端失敗，請稍後重試",false);
+    else cfgMsg(`已連接雲端 ✓ 已合併雲端 ${nRemote} 筆與本機 ${nLocal} 筆記錄（共 ${DB.tx.length} 筆），沒有資料被覆蓋`,true);
   }else{
     DB.updatedAt=Date.now();saveLocal();await doSave();
-    cfgMsg("已連接雲端 ✓",true);
+    if(SYNC.state==="err")cfgMsg("已連上雲端，但寫入資料失敗，請稍後重試",false);
+    else cfgMsg("已連接雲端 ✓",true);
   }
   renderCfg();
+  return true;
+}
+$("cfgTest").onclick=async()=>{
+  const c=readCfgForm();if(!c)return;
+  cfgMsg("測試中…");
+  try{
+    const j=await api({action:"ping"},c);
+    if(c.fromToken){CFG={...CFG,url:c.url};saveCfgStore(CFG,$("cfg-remember").checked);showTokenInput=false;$("cfg-token").value="";renderCfg();}
+    cfgMsg("連線成功 ✓ 試算表："+(j.sheet||""),true);
+  }catch(e){cfgMsg("連線失敗："+e.message,false);}
+};
+$("cfgSave").onclick=async()=>{
+  const c=readCfgForm();if(!c)return;
+  await connectAndSync(c);
 };
 $("cfgClear").onclick=()=>{
-  if(!confirm("中斷後資料只會存在這台裝置（雲端資料不會被刪除）。確定？"))return;
-  CFG={};localStorage.removeItem(LS_CFG);try{sessionStorage.removeItem(LS_KEYS);}catch(err){}$("cfg-url").value=DEFAULT_URL;$("cfg-key").value="";
-  cfgMsg("已中斷雲端");setSync("","已存在本機（未連接雲端）");renderCfg();
+  if(!confirm("中斷後會清除這台裝置上的雲端位址與通行碼（Google Sheet 資料不會被刪除）。確定？"))return;
+  CFG={};showTokenInput=false;
+  localStorage.removeItem(LS_CFG);try{sessionStorage.removeItem(LS_KEYS);}catch(err){}
+  $("cfg-token").value="";$("cfg-key").value="";
+  cfgMsg("已中斷雲端並清除本機設定");setSync("","已存在本機（未連接雲端）");renderCfg();
 };
+
+/* 換機 QR Code／私人設定連結 */
+function copyText(txt,okMsg){
+  const done=()=>toast(okMsg);
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(done,()=>{fallbackCopy(txt);done();});
+  }else{fallbackCopy(txt);done();}
+}
+function fallbackCopy(txt){
+  const ta=document.createElement("textarea");ta.value=txt;ta.style.position="fixed";ta.style.opacity="0";
+  document.body.appendChild(ta);ta.select();try{document.execCommand("copy");}catch(e){}ta.remove();
+}
+function currentSetupToken(){
+  const incKey=$("qrIncludeKey").checked&&CFG.key;
+  return encodeSetupToken(CFG.url,incKey?CFG.key:"");
+}
+function currentSetupLink(){
+  return location.origin+location.pathname+"#cfg="+currentSetupToken();
+}
+function renderQrModal(){
+  if(!isValidApiUrl(CFG.url))return;
+  $("qrIncludeKey").disabled=!CFG.key;
+  if(!CFG.key)$("qrIncludeKey").checked=false;
+  $("qrBox").innerHTML=window.QRCode.toSvg(currentSetupLink());
+}
+$("qrBtn").onclick=()=>{
+  if(!isValidApiUrl(CFG.url))return;
+  $("qrIncludeKey").checked=false;
+  renderQrModal();
+  openModal("qrModal","qrCopyLink");
+};
+$("qrIncludeKey").onchange=renderQrModal;
+$("qrClose").onclick=()=>closeModal("qrModal");
+$("qrModal").onclick=e=>{if(e.target===$("qrModal"))closeModal("qrModal");};
+$("qrCopyLink").onclick=()=>copyText(currentSetupLink(),"已複製私人設定連結（請勿公開分享）");
+$("qrCopyToken").onclick=()=>copyText(currentSetupToken(),"已複製設定碼（請勿公開分享）");
+
+// 透過私人設定連結（#cfg=fb1.…）進入時自動匯入，並立刻清除網址列
+function importFromHash(){
+  const h=location.hash||"";
+  if(!/[#&](?:cfg|setup)=/.test(h))return null;
+  try{history.replaceState(null,"",location.pathname+location.search);}catch(e){}
+  const parsed=decodeSetupToken(h);
+  if(!parsed)return{err:"私人設定連結無效或格式錯誤"};
+  CFG={...CFG,url:parsed.url,...(parsed.key?{key:parsed.key}:{})};
+  showTokenInput=false;
+  saveCfgStore(CFG,$("cfg-remember").checked);
+  $("cfg-token").value="";
+  if(parsed.key)$("cfg-key").value=parsed.key;
+  return parsed;
+}
 /* 備份與還原 */
 $("bkExport").onclick=()=>{
   const blob=new Blob([JSON.stringify(DB,null,2)],{type:"application/json"});
@@ -1092,11 +1191,27 @@ document.querySelectorAll("form").forEach(f=>{
 
 function boot(){
   applyTheme();
+  const imported=importFromHash();
   renderCfg();
   try{const local=JSON.parse(localStorage.getItem(LS_DB));if(local&&local.tx!==undefined)applyDB(local);}catch(e){}
   fillCats();fillFtCats();renderAll();updateTabStops();
-  if(cloudOn())pull();
-  else setSync("","已存在本機（到「雲端」分頁連接 Google Sheet）");
+  if(imported){
+    activateTab($("tab-cloud"));
+    if(imported.err){
+      cfgMsg(imported.err,false);
+      setSync("","已存在本機（未連接雲端）");
+    }else if(imported.key){
+      connectAndSync({url:imported.url,key:imported.key});
+    }else{
+      cfgMsg("已匯入雲端位址 ✓ 請輸入通行碼完成連線",true);
+      setSync("","已匯入雲端位址（請輸入通行碼）");
+      setTimeout(()=>$("cfg-key").focus({preventScroll:true}),0);
+    }
+  }else if(cloudOn()){
+    pull();
+  }else{
+    setSync("","已存在本機（到「雲端」分頁連接 Google Sheet）");
+  }
 }
 boot();
 

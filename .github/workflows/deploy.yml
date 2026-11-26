@@ -29,14 +29,8 @@ jobs:
       - name: 執行自動測試（失敗就不部署）
         run: node --test tests/logic.test.js
 
-      - name: 產生 config.js（後端網址來自 Repository variable）
-        env:
-          # 在 repo Settings → Secrets and variables → Actions → Variables 設定
-          APPS_SCRIPT_URL: ${{ vars.APPS_SCRIPT_URL }}
-        run: node .github/scripts/make-config.js
-
       - name: 移除不需要放上網站的檔案
-        run: rm -rf .github tests apps-script node_modules package.json package-lock.json playwright.config.js config.example.js
+        run: rm -rf .github tests apps-script node_modules package.json package-lock.json playwright.config.js
 
       - name: 設定 Pages
         uses: actions/configure-pages@v5
