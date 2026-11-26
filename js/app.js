@@ -814,9 +814,12 @@ function logPlanItem(fid){
 }
 
 /* ---------------- 同步狀態 ---------------- */
+let SYNC={state:"",txt:""};
 function setSync(state,txt){
+  SYNC={state,txt};
   const d=$("syncDot");d.className="dot"+(state==="on"?" on":state==="err"?" err":"");$("syncTxt").textContent=txt;
   $("syncRetry").hidden=!(state==="err"&&cloudOn());
+  if(typeof renderCfg==="function")renderCfg();
 }
 $("syncRetry").onclick=()=>{setSync("","重試同步中…");localStorage.getItem(LS_DIRTY)?doSave():pull();};
 $("ivEmptyBtn").onclick=()=>$("iv-name").focus();
@@ -992,13 +995,26 @@ $("xlsxBtn").onclick=async()=>{
 /* ---------------- 雲端設定頁 ---------------- */
 function cfgMsg(t,ok){const m=$("cfgMsg");m.textContent=t;m.style.color=ok===false?"var(--danger)":ok?"var(--jade)":"var(--muted)";}
 function readCfgForm(){
-  let url=$("cfg-url").value.trim();const key=$("cfg-key").value.trim();
-  if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)){cfgMsg("網址格式不對：要是 https://script.google.com/…/exec",false);return null;}
-  if(!key){cfgMsg("請填通行碼",false);return null;}
+  const url=$("cfg-url").value.trim()||DEFAULT_URL;const key=$("cfg-key").value.trim();
+  if(!key){showErr($("cfg-key"),"請輸入通行碼");return null;}
+  if(!/^https:\/\/script\.google\.com\/.+\/exec$/.test(url)){$("cfgAdv").open=true;showErr($("cfg-url"),"網址格式不對：要是 https://script.google.com/…/exec 結尾",$("cfgUrlHint"));return null;}
   return{url,key};
 }
 $("cfg-url").value=CFG.url||"";$("cfg-key").value=CFG.key||"";
-if(DEFAULT_URL&&CFG.url===DEFAULT_URL)$("cfgUrlHint").hidden=false;
+// 狀態列、按鈕文字與「進階」網址區塊的顯示
+function renderCfg(){
+  const on=cloudOn(),st=$("cfgStatus");
+  if(!st)return;
+  st.className="cfg-status"+(on?(SYNC.state==="err"?" err":" on"):"");
+  st.innerHTML=on
+    ?`<span aria-hidden="true">${SYNC.state==="err"?"⚠":"●"}</span><span>${esc(SYNC.txt||"已連接雲端")}<small>資料會自動同步到你的 Google Sheet</small></span>`
+    :`<span aria-hidden="true">○</span><span>尚未連接雲端<small>${DEFAULT_URL?"輸入通行碼就能開始同步":"需要先填入 Apps Script 網址與通行碼"}</small></span>`;
+  $("cfgSave").textContent=on?"更新並同步":"連接並同步";
+  $("cfgClear").hidden=!on;
+  const custom=!!CFG.url&&CFG.url!==DEFAULT_URL;
+  $("cfgUrlHint").textContent=DEFAULT_URL&&!custom?"目前使用網站預設網址，通常不需要修改。":"";
+  if(!DEFAULT_URL||custom)$("cfgAdv").open=true;
+}
 (()=>{let ls={};try{ls=JSON.parse(localStorage.getItem(LS_CFG)||"{}");}catch(e){}$("cfg-remember").checked=!!ls.key||!CFG.key;})();
 $("cfgTest").onclick=async()=>{
   const c=readCfgForm();if(!c)return;
@@ -1027,11 +1043,12 @@ $("cfgSave").onclick=async()=>{
     DB.updatedAt=Date.now();saveLocal();await doSave();
     cfgMsg("已連接雲端 ✓",true);
   }
+  renderCfg();
 };
 $("cfgClear").onclick=()=>{
   if(!confirm("中斷後資料只會存在這台裝置（雲端資料不會被刪除）。確定？"))return;
   CFG={};localStorage.removeItem(LS_CFG);try{sessionStorage.removeItem(LS_KEYS);}catch(err){}$("cfg-url").value=DEFAULT_URL;$("cfg-key").value="";
-  cfgMsg("已中斷雲端");setSync("","已存在本機（未連接雲端）");
+  cfgMsg("已中斷雲端");setSync("","已存在本機（未連接雲端）");renderCfg();
 };
 /* 備份與還原 */
 $("bkExport").onclick=()=>{
@@ -1075,6 +1092,7 @@ document.querySelectorAll("form").forEach(f=>{
 
 function boot(){
   applyTheme();
+  renderCfg();
   try{const local=JSON.parse(localStorage.getItem(LS_DB));if(local&&local.tx!==undefined)applyDB(local);}catch(e){}
   fillCats();fillFtCats();renderAll();updateTabStops();
   if(cloudOn())pull();

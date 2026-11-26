@@ -250,14 +250,21 @@
     <h2 class="sr-only">雲端</h2>
     <div class="grid2">
       <form class="panel" id="cfgForm" novalidate>
-        <h3>雲端同步設定</h3>
-        <p class="sub">連到你自己的 Google Apps Script，資料存進你的 Google Sheet</p>
-        <div class="field"><label>Apps Script 網址（/exec 結尾）</label><input id="cfg-url" placeholder="https://script.google.com/macros/s/……/exec" autocomplete="off"><p class="sub" id="cfgUrlHint" hidden style="margin:4px 0 0">網址已由網站預設帶入，只需要輸入通行碼。</p></div>
-        <div class="field"><label>通行碼（Code.gs 裡的 API_KEY）</label><input id="cfg-key" type="password" autocomplete="off"></div>
-        <div class="field"><label class="check"><input type="checkbox" id="cfg-remember" checked> 在這台裝置記住通行碼</label><p class="sub" style="margin:4px 0 0">取消勾選時，通行碼只保留到關閉瀏覽器，下次要重新輸入（較安全，適合共用電腦）。</p></div>
-        <button class="btn" id="cfgSave" type="submit">儲存並同步</button>
-        <button type="button" class="btn ghost" id="cfgTest" style="margin-top:8px">只測試連線</button>
-        <button type="button" class="btn ghost" id="cfgClear" style="margin-top:8px">中斷雲端（只用本機）</button>
+        <h3>雲端同步</h3>
+        <div id="cfgStatus" class="cfg-status" role="status" aria-live="polite"></div>
+        <div class="field">
+          <label for="cfg-key">通行碼</label>
+          <input id="cfg-key" type="password" autocomplete="off" aria-describedby="cfgKeyHelp">
+          <p class="sub" id="cfgKeyHelp" style="margin:4px 0 0">在 Apps Script 執行 <b>setup</b> 後，「執行記錄」會顯示你的通行碼（API_KEY）。</p>
+        </div>
+        <div class="field"><label class="check"><input type="checkbox" id="cfg-remember" checked> 在這台裝置記住通行碼</label><p class="sub" style="margin:0">取消勾選時，通行碼只保留到關閉瀏覽器，下次要重新輸入（適合共用電腦）。</p></div>
+        <details class="dt" id="cfgAdv" style="margin:0 0 14px">
+          <summary>進階：Apps Script 網址</summary>
+          <div class="field" style="margin-top:8px"><label for="cfg-url">網址（/exec 結尾）</label><input id="cfg-url" placeholder="https://script.google.com/macros/s/……/exec" autocomplete="off"><p class="sub" id="cfgUrlHint" style="margin:4px 0 0"></p></div>
+        </details>
+        <button class="btn" id="cfgSave" type="submit">連接並同步</button>
+        <button type="button" class="btn ghost" id="cfgTest" style="margin-top:8px">測試連線</button>
+        <button type="button" class="btn ghost" id="cfgClear" style="margin-top:8px" hidden>中斷雲端（只用本機）</button>
         <p class="sub" id="cfgMsg" role="status" aria-live="polite" style="margin:12px 0 0"></p>
       </form>
       <div class="panel">

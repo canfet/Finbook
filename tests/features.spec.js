@@ -321,6 +321,7 @@ test.describe('雲端同步 v2（基準版本，通常只需 1 次請求）', ()
     await page.addInitScript(() => { localStorage.removeItem('finbook_cfg_v1'); });
     await page.goto('/');
     await page.click('#tab-cloud');
+    await page.evaluate(() => { document.getElementById('cfgAdv').open = true; });
     await page.fill('#cfg-url', URL_);
     await page.fill('#cfg-key', 'secret-key');
     await page.uncheck('#cfg-remember');
@@ -338,6 +339,41 @@ test('config.js 提供的預設網址會自動帶入，只需再輸入通行碼'
   await page.goto('/');
   await page.click('#tab-cloud');
   await expect(page.locator('#cfg-url')).toHaveValue('https://script.google.com/macros/s/TEST/exec');
-  await expect(page.locator('#cfgUrlHint')).toBeVisible();
+  await expect(page.locator('#cfgStatus')).toContainText('輸入通行碼就能開始同步');
+  await expect(page.locator('#cfg-url')).toBeHidden(); // 網址收在「進階」裡
   await expect(page.locator('#cfg-key')).toHaveValue('');
+  await expect(page.locator('#cfgClear')).toBeHidden();
+});
+
+test('有預設網址時：只輸入通行碼、按 Enter 就能連線，並通過 axe', async ({ page }) => {
+  const URL_ = 'https://script.google.com/macros/s/TEST/exec';
+  await page.route('**/config.js', r => r.fulfill({ contentType: 'text/javascript', body: `window.APP_CONFIG={API_URL:"${URL_}"};` }));
+  const calls = [];
+  await page.route('https://script.google.com/**', async (route) => {
+    const b = JSON.parse(route.request().postData() || '{}');
+    calls.push([b.action, b.key]);
+    const out = b.action === 'get' ? { ok: true, v: 2, data: null } : { ok: true, v: 2, sheet: 'x' };
+    await route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify(out) });
+  });
+  await seed(page, baseDB());
+  await page.goto('/');
+  await page.click('#tab-cloud');
+  const r = await new AxeBuilder({ page }).withTags(AA).analyze();
+  expect(fmtV(r)).toEqual([]);
+  await page.fill('#cfg-key', 'my-key');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#cfgMsg')).toContainText('已連接雲端');
+  await expect(page.locator('#cfgStatus')).toHaveClass(/on/);
+  await expect(page.locator('#cfgSave')).toHaveText('更新並同步');
+  await expect(page.locator('#cfgClear')).toBeVisible();
+  expect(calls.every(c => c[1] === 'my-key')).toBe(true);
+});
+
+test('沒填通行碼就送出：欄位顯示錯誤並聚焦', async ({ page }) => {
+  await seed(page, baseDB());
+  await page.goto('/');
+  await page.click('#tab-cloud');
+  await page.click('#cfgSave');
+  await expect(page.locator('#cfg-key')).toHaveAttribute('aria-invalid', 'true');
+  await expect(page.locator('#cfg-key')).toBeFocused();
 });
